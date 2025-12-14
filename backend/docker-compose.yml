@@ -1,0 +1,90 @@
+
+version: '3.8'
+
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  init-ollama:
+    image: curlimages/curl
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Waiting for Ollama...';
+      sleep 5;
+      echo 'Pulling llama3.2:3b...';
+      curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2:3b\"}';
+      echo 'Pulling nomic-embed-text...';
+      curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"nomic-embed-text\"}';
+      echo 'Done!';
+      "
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8080:8000" # Expose on 8080 to avoid conflict with Chroma
+    environment:
+      - REDIS_HOST=redis
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+      - OLLAMA_URL=http://ollama:11434
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-key.json # Mock/Mount if needed
+    depends_on:
+      - redis
+      - ollama
+      - chroma
+    volumes:
+      - ./db:/backend/db 
+      # GCS Warning: without real creds, storage_service will fail locally unless mocked or creds provided.
+      
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    deploy:
+      replicas: 2
+    environment:
+      - REDIS_HOST=redis
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+      - OLLAMA_URL=http://ollama:11434
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+    depends_on:
+      - redis
+      - ollama
+      - chroma
+
+volumes:
+  ollama_data:
+  chroma_data:

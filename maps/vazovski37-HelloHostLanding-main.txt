@@ -1,0 +1,177 @@
+--- TECH STACK ---
+Dependencies:
+  @supabase/supabase-js: ^2.49.2
+  @studio-freight/lenis: ^1.0.42
+  @tsparticles/engine: ^3.9.1
+  @tsparticles/react: ^3.0.0
+  framer-motion: ^12.23.12
+  lenis: ^1.3.9
+  lucide-react: ^0.541.0
+  next: 15.5.7
+  react: 19.1.0
+  react-dom: 19.1.0
+  tsparticles: ^3.9.1
+  tsparticles-slim: ^2.12.0
+DevDependencies:
+  @eslint/eslintrc: ^3
+  @tailwindcss/postcss: ^4
+  @types/node: ^20
+  @types/react: ^19
+  @types/react-dom: ^19
+  autoprefixer: ^10.4.21
+  eslint: ^9
+  eslint-config-next: 15.5.7
+  postcss: ^8.5.6
+  tailwindcss: ^4.1.12
+  typescript: ^5
+------------------
+
+📄 File: README.md
+  (No signatures found)
+
+📄 File: next.config.ts
+  └─ import type { NextConfig } from "next";
+  └─ export default nextConfig;
+
+📄 File: package.json
+  (No signatures found)
+
+📄 File: src/app/api/join-waitlist/route.ts
+  └─ import { NextResponse } from 'next/server';
+  └─ import { supabase } from '../../../lib/supabase';
+  └─ export async function POST(request: Request) {
+
+📄 File: src/app/globals.css
+  (No signatures found)
+
+📄 File: src/app/layout.tsx
+  └─ import type { Metadata } from 'next';
+  └─ import { Inter, Poppins } from 'next/font/google';
+  └─ import './globals.css';
+  └─ import { SocialLinks } from '../components/SocialLinks';
+  └─ import SmoothScrollProvider from '../components/SmoothScrollProvider';
+  └─ import { CustomCursor } from '../components/CustomCursor'; // 1. Import the c...
+  └─ export const metadata = {
+  └─ export default function RootLayout({ children }: { children: React.ReactNode ...
+
+📄 File: src/app/page.tsx
+  └─ import { Header } from '../components/Header';
+  └─ import { Hero } from '../components/Hero';
+  └─ import { Solution } from '../components/Solution';
+  └─ import { HowItWorks } from '../components/HowItWorks';
+  └─ import { Recognition } from '../components/Recognition';
+  └─ import { Footer } from '../components/Footer';
+  └─ import { ParallaxBackground } from '../components/ParallaxBackground';
+  └─ import { Problem } from '../components/Problem';
+  └─ export default function HomePage() {
+
+📄 File: src/components/AnimatedHeroBackground.tsx
+  └─ import { motion, useAnimation } from 'framer-motion';
+  └─ import { KeyRound, BedDouble, Wifi, ConciergeBell } from 'lucide-react';
+  └─ import { useState, useEffect } from 'react';
+  └─ export const AnimatedHeroBackground = () => {
+
+📄 File: src/components/AnimatedStatistic.tsx
+  └─ import { useEffect, useRef } from 'react';
+  └─ import { motion, useInView, useMotionValue, useTransform, animate } from 'fra...
+  └─ export const AnimatedStatistic = ({
+
+📄 File: src/components/Button.tsx
+  └─ import { ArrowRight } from 'lucide-react';
+  └─ export const Button = ({ children, href, variant = 'primary', className = '' ...
+
+📄 File: src/components/CustomCursor.tsx
+  └─ import { motion, useMotionValue, useSpring } from 'framer-motion';
+  └─ import { useEffect } from 'react';
+  └─ export const CustomCursor = () => {
+
+📄 File: src/components/Footer.tsx
+  └─ import { Mail, Phone, Twitter, Linkedin, Facebook } from 'lucide-react';
+  └─ import { WaitlistForm } from './WaitlistForm';
+  └─ export const Footer = () => (
+
+📄 File: src/components/GridBackground.tsx
+  └─ export const GridBackground = () => (
+
+📄 File: src/components/Header.tsx
+  └─ import Image from 'next/image';
+  └─ import { Button } from './Button'; // Assuming Button component is in this path
+  └─ import { useState } from 'react';
+  └─ import { motion, AnimatePresence } from 'framer-motion';
+  └─ import { Menu, X } from 'lucide-react';
+  └─ export const Header = () => {
+
+📄 File: src/components/Hero.tsx
+  └─ import { motion } from 'framer-motion';
+  └─ import { Section } from './Section';
+  └─ import { AnimatedHeroBackground } from './AnimatedHeroBackground';
+  └─ import { ParticlesBackground } from './ParticlesBackground';
+  └─ import { GridBackground } from './GridBackground';
+  └─ import { HeroGlow } from './HeroGlow';
+  └─ import { Button } from './Button'; // Import the new Button component
+  └─ import { BrainCircuit, AreaChart, Blocks, Zap, Rocket } from 'lucide-react';
+  └─ export const Hero = () => (
+
+📄 File: src/components/HeroGlow.tsx
+  └─ import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
+  └─ import { useEffect, useState } from 'react';
+  └─ export const HeroGlow = () => {
+
+📄 File: src/components/HowItWorks.tsx
+  └─ import { Section } from './Section';
+  └─ export const HowItWorks = () => (
+
+📄 File: src/components/ParticlesBackground.tsx
+  └─ import { useEffect, useState } from 'react';
+  └─ import Particles, { initParticlesEngine } from '@tsparticles/react';
+  └─ import { type IOptions, type Engine } from '@tsparticles/engine';
+  └─ import { loadFull } from "tsparticles";
+  └─ import { motion } from 'framer-motion';
+  └─ export const ParticlesBackground = () => {
+
+📄 File: src/components/Problem.tsx
+  └─ import { motion, useScroll, useTransform } from "framer-motion";
+  └─ import { useRef, useState, useEffect, ReactNode } from "react";
+  └─ import { ArrowRightLeft, Frown, GitBranchPlus } from "lucide-react";
+  └─ export function Problem() {
+
+📄 File: src/components/Recognition.tsx
+  └─ import { Award, Trophy, Newspaper } from 'lucide-react';
+  └─ import { Section } from './Section';
+  └─ import { motion, useScroll, useTransform } from 'framer-motion';
+  └─ import { useRef } from 'react';
+  └─ export const Recognition = () => {
+
+📄 File: src/components/Section.tsx
+  └─ import { motion } from 'framer-motion';
+  └─ import React, { forwardRef } from 'react'; // 1. Import forwardRef
+  └─ export const Section = forwardRef<HTMLElement, { children: React.ReactNode; c...
+
+📄 File: src/components/SmoothScrollProvider.tsx
+  └─ import { useEffect } from 'react';
+  └─ import Lenis from 'lenis';
+  └─ function SmoothScrollProvider
+  └─ export default SmoothScrollProvider;
+
+📄 File: src/components/SocialLinks.tsx
+  └─ import { Facebook, Send, Music2, Instagram } from 'lucide-react';
+  └─ export const SocialLinks = () => (
+
+📄 File: src/components/Solution.tsx
+  └─ import { BrainCircuit, Building, Users } from 'lucide-react';
+  └─ import {
+  └─ import { useRef } from 'react';
+  └─ import { GridBackground } from './GridBackground';
+  └─ export default function Solution() {
+  └─ export { Solution };
+
+📄 File: src/components/WaitlistForm.tsx
+  └─ import { FormEvent, useState } from 'react';
+  └─ export function WaitlistForm() {
+
+📄 File: src/lib/supabase.ts
+  └─ import { createClient } from '@supabase/supabase-js';
+  └─ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+📄 File: tsconfig.json
+  (No signatures found)
