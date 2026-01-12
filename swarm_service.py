@@ -1,167 +1,116 @@
-
 import os
 import json
+import uuid
+import time
 import asyncio
-import aiohttp
+import redis.asyncio as redis
 from dotenv import load_dotenv
 
 load_dotenv()
 
-
 class SwarmService:
     """
-    Swarm analysis service using local Ollama LLM for file analysis.
-    Uses qwen2.5-coder:3b by default for fast, code-aware analysis.
+    Swarm Client Service.
+    Instead of processing locally, this service dispatches analysis jobs
+    to the Redis Queue ('swarm_jobs'), where K8s workers pick them up.
     """
     
     def __init__(self):
-        self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-        self.model = os.getenv("SWARM_MODEL", "qwen2.5-coder:3b")
-        self.timeout = aiohttp.ClientTimeout(total=60)
+        # Redis Configuration
+        self.redis_host = os.getenv("REDIS_HOST", "localhost")
+        # Use 6380 if localhost (port-forwarded), else 6379 (internal)
+        # For this integration, we assume running from host, so 6380 default
+        # Ideally, this should be configurable via env
+        self.redis_port = int(os.getenv("REDIS_PORT", 6380)) 
+        self.queue_name = "swarm_jobs"
         
-    async def _call_ollama(self, prompt: str) -> str:
-        """
-        Calls Ollama API directly for completion.
-        """
-        url = f"{self.ollama_url}/api/generate"
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0.1,  # Low temp for consistent JSON output
-                "num_predict": 512   # Limit response length
-            }
-        }
-        
-        try:
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.post(url, json=payload) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        return data.get("response", "")
-                    else:
-                        error_text = await resp.text()
-                        print(f"❌ Ollama error {resp.status}: {error_text}")
-                        return ""
-        except asyncio.TimeoutError:
-            print(f"⚠️ Ollama timeout for request")
-            return ""
-        except aiohttp.ClientError as e:
-            print(f"❌ Ollama connection error: {e}")
-            return ""
-    
-    async def analyze_file(self, sem: asyncio.Semaphore, file_name: str, code: str) -> tuple:
-        """
-        Analyzes a single file using the local LLM.
-        Returns (file_name, analysis_dict).
-        """
-        async with sem:
-            # Truncate code if too long (3b model has limited context)
-            code_snippet = code[:4000] if len(code) > 4000 else code
-            
-            prompt = (
-                f"Analyze this code file: '{file_name}'\n\n"
-                f"```\n{code_snippet}\n```\n\n"
-                "Return a JSON object with EXACTLY these keys:\n"
-                '{"summary": "1 sentence description", '
-                '"dependencies": ["list", "of", "imports"], '
-                '"exports": ["list", "of", "exported", "items"]}\n'
-                "Respond with JSON ONLY, no markdown."
-            )
-            
-            try:
-                response = await self._call_ollama(prompt)
-                
-                if not response:
-                    return file_name, {"summary": "Analysis failed - no response", "dependencies": [], "exports": []}
-                
-                # Clean response (remove markdown if present)
-                text = response.strip()
-                if text.startswith("```json"):
-                    text = text[7:]
-                if text.startswith("```"):
-                    text = text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-                text = text.strip()
-                
-                # Find JSON object in response
-                start = text.find("{")
-                end = text.rfind("}") + 1
-                if start != -1 and end > start:
-                    text = text[start:end]
-                
-                data = json.loads(text)
-                print(f"  ✅ Analyzed: {file_name}")
-                return file_name, data
-                
-            except json.JSONDecodeError as e:
-                print(f"  ⚠️ JSON parse failed for {file_name}: {e}")
-                return file_name, {"summary": "JSON parse failed", "dependencies": [], "exports": [], "raw": response[:200] if response else ""}
-            except Exception as e:
-                print(f"  ❌ Analysis failed for {file_name}: {e}")
-                return file_name, {"summary": f"Error: {str(e)}", "dependencies": [], "exports": []}
-    
+    async def get_redis(self):
+        """Returns an async Redis connection."""
+        return await redis.Redis(
+            host=self.redis_host, 
+            port=self.redis_port, 
+            decode_responses=True
+        )
+
     async def run_swarm_analysis(self, documents: list) -> dict:
         """
-        Runs concurrent analysis on all documents.
+        Runs concurrent analysis on all documents via the Swarm.
         Returns a dependency graph dict.
         """
-        print(f"🐝 Starting Swarm Analysis with {self.model}...")
-        print(f"   Ollama URL: {self.ollama_url}")
-        print(f"   Files to analyze: {len(documents)}")
+        print(f"🐝[Client] Starting Swarm Analysis for {len(documents)} files...")
         
-        # Check if Ollama is available
-        if not await self._check_ollama():
-            print("❌ Ollama is not available. Skipping swarm analysis.")
+        r = await self.get_redis()
+        try:
+            await r.ping()
+        except Exception as e:
+            print(f"❌[Client] Redis connection failed: {e}")
+            print("   Ensure 'kubectl port-forward' is running if on host.")
             return {}
+
+        job_map = {} # job_id -> file_name
         
-        # Concurrency limit (5 parallel requests)
-        sem = asyncio.Semaphore(5)
-        
-        tasks = []
+        # 1. Dispatch Jobs
+        print("🚀[Client] Dispatching jobs to Swarm...")
+        pipe = r.pipeline()
         for doc in documents:
             file_name = doc.metadata.get("file_path", "unknown")
             code = doc.text
-            tasks.append(self.analyze_file(sem, file_name, code))
-        
-        results = await asyncio.gather(*tasks)
-        
-        graph = {}
-        for fname, data in results:
-            graph[fname] = data
-        
-        print(f"✅ Swarm analysis complete. Analyzed {len(graph)} files.")
-        return graph
-    
-    async def _check_ollama(self) -> bool:
-        """
-        Checks if Ollama server is running and model is available.
-        """
-        try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                async with session.get(f"{self.ollama_url}/api/tags") as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        models = [m.get("name", "") for m in data.get("models", [])]
-                        
-                        # Check if our model is available
-                        model_base = self.model.split(":")[0]
-                        available = any(model_base in m for m in models)
-                        
-                        if available:
-                            print(f"✅ Ollama ready with {self.model}")
-                            return True
-                        else:
-                            print(f"⚠️ Model {self.model} not found. Available: {models}")
-                            print(f"   Run: ollama pull {self.model}")
-                            return False
-                    return False
-        except Exception as e:
-            print(f"❌ Cannot connect to Ollama at {self.ollama_url}: {e}")
-            return False
+            job_id = str(uuid.uuid4())
+            
+            payload = {
+                "id": job_id,
+                "file_name": file_name,
+                "code": code
+            }
+            
+            pipe.rpush(self.queue_name, json.dumps(payload))
+            job_map[job_id] = file_name
+            
+        await pipe.execute()
+        print(f"✅[Client] Dispatched {len(job_map)} jobs.")
 
+        # 2. Await Results (Scatter-Gather)
+        # We poll for results or use blpop on specific reply keys?
+        # Workers push to `reply:{job_id}`. 
+        # Since we have many jobs, we can poll all reply keys or use a dedicated response queue.
+        # For simplicity with current worker logic (worker pushes to unique key), we poll concurrent keys.
+        
+        results = {}
+        pending_jobs = set(job_map.keys())
+        
+        start_time = time.time()
+        timeout = 120 # 2 minutes total timeout
+        
+        print("⏳[Client] Waiting for results...")
+        
+        while pending_jobs and (time.time() - start_time) < timeout:
+            # Check all pending keys (efficient enough for <100 files)
+            # Optimization: could make workers push to a single 'swarm_results' queue with correlation ID.
+            # But adhering to current worker logic:
+            
+            for job_id in list(pending_jobs):
+                reply_key = f"reply:{job_id}"
+                data_str = await r.lpop(reply_key)
+                
+                if data_str:
+                    try:
+                        data = json.loads(data_str)
+                        file_name = job_map[job_id]
+                        results[file_name] = data
+                        pending_jobs.remove(job_id)
+                        print(f"  ✨ Recieved: {file_name}")
+                    except:
+                        print(f"  ⚠️ Error parsing reply for {job_id}")
+            
+            await asyncio.sleep(0.5)
+            
+        await r.aclose()
+        
+        if pending_jobs:
+            print(f"⚠️[Client] Timed out waiting for {len(pending_jobs)} files.")
+        
+        print(f"✅[Client] Swarm analysis complete. Received {len(results)}/{len(documents)}.")
+        return results
 
 # Singleton instance
 swarm_service = SwarmService()
