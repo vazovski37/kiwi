@@ -17,14 +17,28 @@ spec:
       labels:
         app: ollama
     spec:
+      # Ensure running on a GPU node
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
       containers:
         - name: ollama
           image: ollama/ollama:latest
+          resources:
+            limits:
+              nvidia.com/gpu: "1" # REQUEST GPU
           ports:
             - containerPort: 11434
           volumeMounts:
             - name: ollama-storage
               mountPath: /root/.ollama
+          # OPTIONAL: Try to pull model on startup (can be flaky if network is slow)
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  ["/bin/sh", "-c", "sleep 10 && ollama pull qwen2.5-coder:3b"]
       volumes:
         - name: ollama-storage
           emptyDir: {}
