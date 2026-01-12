@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: swarm-worker
+  namespace: aiswarm
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: swarm-worker
+  template:
+    metadata:
+      labels:
+        app: swarm-worker
+    spec:
+      containers:
+        - name: worker
+          image: aiswarm-worker:v3
+          imagePullPolicy: IfNotPresent # Use local image
+          env:
+            - name: REDIS_HOST
+              value: "redis-service"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: OLLAMA_BASE_URL
+              value: "http://ollama-service:11434" # Internal K8s Service
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi

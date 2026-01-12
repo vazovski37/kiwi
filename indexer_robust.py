@@ -22,6 +22,9 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core.retrievers import AutoMergingRetriever
 from llama_index.core.query_engine import RetrieverQueryEngine
 
+# Import SwarmService for local LLM analysis
+from swarm_service import swarm_service
+
 # Load environment variables
 load_dotenv()
 
@@ -185,53 +188,8 @@ def generate_repo_map(documents):
         
     return final_map
 
-# --- FEATURE B: RECURSIVE SWARM (GRAPH) ---
-async def analyze_file_agentically(sem, llm_flash, file_name, code):
-    async with sem:
-        prompt = (
-            f"Analyze the following code file: '{file_name}'\n\nCode:\n```\n{code[:8000]}\n```\n\n"
-            "Return a strictly valid JSON object with EXACTLY these keys:\n"
-            "{ 'summary': '1 sentence description of what the file does', \n"
-            "  'dependencies': ['list', 'of', 'imports', 'or', 'modules'], \n"
-            "  'exports': ['list', 'of', 'exported', 'functions', 'classes'] }\n"
-            "Respond ONLY with JSON. Do not include markdown formatting like ```json."
-        )
-        try:
-            response = await llm_flash.acomplete(prompt)
-            text = response.text.strip()
-            # Clean md blocks if present
-            if text.startswith("```json"):
-                text = text[7:-3]
-            elif text.startswith("```"):
-                text = text[3:-3]
-            
-            data = json.loads(text)
-            return file_name, data
-        except Exception as e:
-            # print(f"  ⚠️ Agent failed on {file_name}: {e}")
-            return file_name, {"summary": "Analysis failed", "dependencies": [], "exports": [], "error": str(e)}
-
-async def run_swarm_analysis(documents):
-    print("🐝 Starting Recursive Swarm Analysis (Swarm Agent)...")
-    model_name = os.getenv("LLM_MODEL", "models/gemini-1.5-flash")
-    llm_flash = GoogleGenAI(model=model_name)
-    
-    # Concurrency limit
-    sem = asyncio.Semaphore(5) 
-    
-    tasks = []
-    for doc in documents:
-        file_name = doc.metadata.get("file_path", "unknown")
-        code = doc.text
-        tasks.append(analyze_file_agentically(sem, llm_flash, file_name, code))
-        
-    results = await asyncio.gather(*tasks)
-    
-    graph = {}
-    for fname, data in results:
-        graph[fname] = data
-        
-    return graph
+# --- FEATURE B: SWARM ANALYSIS (via SwarmService) ---
+# Swarm analysis now uses local Ollama LLM via swarm_service.py
 
 # --- MAIN INGESTION ---
 def ingest_repo(owner, repo, branch="main"):
@@ -255,17 +213,17 @@ def ingest_repo(owner, repo, branch="main"):
         f.write(repo_map_content)
     print(f"🗺️ Repo Map saved to ./maps/{repo_id}.txt")
     
-    # 2B. Run Swarm Analysis
+    # 2B. Run Swarm Analysis (using local Ollama LLM)
     try:
-        # Run async loop. We are in sync func, safely call run
-        repo_graph = asyncio.run(run_swarm_analysis(docs))
+        # Run async loop via SwarmService
+        repo_graph = asyncio.run(swarm_service.run_swarm_analysis(docs))
         os.makedirs("./graphs", exist_ok=True)
         with open(f"./graphs/{repo_id}.json", "w", encoding="utf-8") as f:
             json.dump(repo_graph, f, indent=2)
         print(f"🕸️ Dependency Graph saved to ./graphs/{repo_id}.json")
     except Exception as e:
         print(f"⚠️ Swarm Analysis failed: {e}")
-        # Continue to indexing logic? Yes, robust.
+        # Continue to indexing logic - robust fallback
         
     # 3. Parse & Index
     print("🧠 Parsing Code Structure for Vector Index...")
